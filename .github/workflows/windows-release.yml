@@ -1,0 +1,86 @@
+name: Windows build and release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - '**.py'
+      - 'requirements*.txt'
+      - 'assets/**'
+      - 'VERSION'
+      - '.github/workflows/windows-release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: 'requirements*.txt'
+      - name: Install build dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Check version
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid VERSION' }
+          if ($env:REF_TYPE -eq 'tag' -and $env:TAG -ne "v$version") { throw 'Tag and VERSION differ' }
+      - name: Test calendar engine
+        run: python -m pytest -q
+      - name: Smoke-test application startup
+        run: python ci/smoke_startup.py
+      - name: Build standalone executable
+        run: python -m PyInstaller --clean --noconfirm --noconsole --onefile --windowed --name Chronix --icon assets/icon.ico --add-data "assets;assets" main.py
+      - name: Check executable startup and prepare download
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath (Resolve-Path dist/Chronix.exe) -ArgumentList '--smoke-test' -WindowStyle Hidden -PassThru
+          try {
+            if (-not $process.WaitForExit(60000)) { throw 'Chronix startup check timed out' }
+            if ($process.ExitCode -ne 0) { throw "Chronix startup check failed: $($process.ExitCode)" }
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id }
+          }
+          $version = (Get-Content VERSION -Raw).Trim()
+          New-Item -ItemType Directory -Path release-output -Force | Out-Null
+          $filename = "Chronix-v$version-windows-x64.exe"
+          Copy-Item -LiteralPath dist/Chronix.exe -Destination "release-output/$filename"
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "release-output/$filename").Hash.ToLower()
+          "$hash  $filename" | Set-Content -Encoding ascii release-output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: chronix-windows-x64
+          path: release-output/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: chronix-windows-x64
+          path: release-output
+      - name: Publish verified Windows download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" release-output/* --verify-tag --title "Chronix $TAG" --notes-file RELEASE-NOTES.md

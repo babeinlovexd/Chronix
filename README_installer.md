@@ -1,14 +1,7 @@
-Ein Installer für Windows (.exe) kann sehr leicht mit **Inno Setup** erstellt werden.
-1. Lade [Inno Setup](https://jrsoftware.org/isinfo.php) herunter und installiere es.
-2. Erstelle ein neues Script mit dem Wizard.
-3. Wähle die in `dist/Chronix` oder als `dist/Chronix.exe` kompilierte Datei aus.
-4. (Optional) Um .worldcal Dateien automatisch mit Chronix zu verknüpfen, füge diese Zeilen am Ende des Inno Setup Scripts (vor dem Kompilieren) unter `[Registry]` ein:
+# Optional: eigener Windows-Installer
 
-```inno
-[Registry]
-Root: HKCR; Subkey: ".worldcal"; ValueType: string; ValueName: ""; ValueData: "ChronixProject"; Flags: uninsdeletevalue
-Root: HKCR; Subkey: "ChronixProject"; ValueType: string; ValueName: ""; ValueData: "Chronix World Calendar"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "ChronixProject\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\Chronix.exe,0"
-Root: HKCR; Subkey: "ChronixProject\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Chronix.exe"" ""%1"""
-```
-Das sorgt dafür, dass ein Doppelklick auf eine `.worldcal` Datei das Programm direkt öffnet!
+Die fertige portable EXE erhältst du unter [Releases](https://github.com/babeinlovexd/Chronix/releases/latest). Der Workflow [Windows build and release](.github/workflows/windows-release.yml) baut und prüft sie automatisch. Inno Setup ist dafür nicht erforderlich.
+
+Wenn du selbst einen zusätzlichen Installationsassistenten verteilen möchtest, kannst du die mit PyInstaller gebaute `Chronix.exe` mit [Inno Setup](https://jrsoftware.org/isinfo.php) paketieren. Verwende dafür die EXE aus demselben Versionsstand wie deine Installer-Metadaten.
+
+Eine Dateizuordnung für `.worldcal` allein implementiert noch kein automatisches Öffnen: Chronix lädt Projekte derzeit über die Oberfläche. Für das direkte Öffnen per Doppelklick wäre zusätzlich eine Verarbeitung des Dateipfads beim Programmstart nötig.
